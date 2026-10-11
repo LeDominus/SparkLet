@@ -1,0 +1,9 @@
+target/
+output/
+.idea/
+*.iml
+.vscode/
+*.csv
+*.png
+*.md
+data/
