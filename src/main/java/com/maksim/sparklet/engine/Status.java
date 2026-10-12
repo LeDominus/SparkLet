@@ -1,5 +1,3 @@
 package com.maksim.sparklet.engine;
 
-public class Status {
-    
-}
+public enum Status { SUCCESS, FAILED }

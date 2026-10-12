@@ -5,20 +5,18 @@ import java.nio.file.Path;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import com.maksim.sparklet.engine.Dataset;
-import com.maksim.sparklet.io.csvSink;
-import com.maksim.sparklet.io.csvSource;
-import com.maksim.sparklet.io.Sink;
-import com.maksim.sparklet.io.Source;
-import com.maksim.sparklet.jobs.PurchaseJob;
-import com.maksim.sparklet.model.Event;
-import com.maksim.sparklet.model.PurchaseRow;
+import com.maksim.sparklet.model.*;
+import com.maksim.sparklet.io.*;
+import com.maksim.sparklet.jobs.*;
+import com.maksim.sparklet.engine.*;
+import com.maksim.sparklet.report.*;;
 
 public class Main {
     public static void main(String[] args) throws IOException{
         ExecutorService pool = Executors.newFixedThreadPool(4);
         final String input_dir = "data/raw/events.csv";
-        final String output_dir = "data/result/purchases";
+        final String jobName = "purchases_v2";
+        final String output_dir = "data/result/" + jobName;
         final String header = "user_id,amount,bucket";
 
         try {
@@ -29,16 +27,38 @@ public class Main {
             // TRANSFORM DATA
             Dataset<PurchaseRow> purchases = PurchaseJob.build(events);
             
-            // WRITE
+            // CREATE SINK
             Sink<PurchaseRow> sink = new csvSink<>(
                 Path.of(output_dir),
                 header,
                 r -> r.userId() + "," + r.amount() + "," + r.bucket()
             );
-            sink.writeWithNPartitions(purchases, sink);   
+            
+            // CREATE JOB
+            Job<PurchaseRow> job = new Job<>(
+                "purchases-job",
+                purchases,
+                sink,
+                pool
+            );
+
+            // EXECUTE JOB
+            JobReport report = job.run();
+
+            System.out.println("Job: " + report.name());
+            System.out.println("Status: " + report.status());
+            System.out.println("Duration: " + report.duration());
+
+            if (report.failureReason() != null) {
+                System.err.println("Failure" + report.failureReason());
+            }
+
+            System.out.println(
+                "Partitions processed: " + report.taskResults().size()
+            );
+
         } finally {
             pool.shutdown();
         }
     }
-
 }
