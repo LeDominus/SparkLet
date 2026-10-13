@@ -5,7 +5,10 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 
 import com.maksim.sparklet.engine.Dataset;
 import com.maksim.sparklet.io.Sink;
@@ -86,24 +89,73 @@ public class Job<T> {
     }
 }
     
-    // Пока что синхронная реализация, далее подключить pool + Futures
     private List<TaskResult> executeAll(List<List<T>> partitions) {
-        Objects.requireNonNull(partitions, "partitions");
+    Objects.requireNonNull(partitions, "partitions");
 
-        List<TaskResult> results = new ArrayList<>();
+    List<Callable<TaskResult>> tasks = new ArrayList<>();
 
-        for (int i = 0; i < partitions.size(); i++) {
-            List<T> rows = partitions.get(i);
+    for (int i = 0; i < partitions.size(); i++) {
+        final int partitionIndex = i;
+        List<T> rows = partitions.get(i);
 
-            TaskResult result = writeOne(i, rows);
+        Callable<TaskResult> task =
+            () -> writeOne(partitionIndex, rows);
+
+        tasks.add(task);
+    }
+
+    List<Future<TaskResult>> futures;
+
+    try {
+        futures = pool.invokeAll(tasks);
+    } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new RuntimeException("Job execution was interrupted", e);
+    }
+
+    List<TaskResult> results = new ArrayList<>(futures.size());
+
+    for (int i = 0; i < futures.size(); i++) {
+        Future<TaskResult> future = futures.get(i);
+
+        try {
+            TaskResult result = future.get();
 
             results.add(
                 Objects.requireNonNull(
-                    result, "writeOne returned null for partition " + i)
+                    result,
+                    "Task returned null for partition " + i
+                )
+            );
+
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() != null
+                ? e.getCause()
+                : e;
+
+            String reason = cause.getMessage();
+
+            if (reason == null || reason.isBlank()) {
+                reason = cause.getClass().getSimpleName();
+            }
+
+            results.add(new TaskResult(
+                name,
+                Status.FAILED,
+                0.0,
+                reason
+            ));
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(
+                "Interrupted while collecting partition results", e
             );
         }
-        return results;
     }
+
+    return results;
+}
 
     private TaskResult writeOne(int index, List<T> rows) {
         Objects.requireNonNull(rows, "rows");

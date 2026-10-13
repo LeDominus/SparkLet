@@ -14,7 +14,7 @@ import com.maksim.sparklet.report.*;;
 public class Main {
     public static void main(String[] args) throws IOException{
         ExecutorService pool = Executors.newFixedThreadPool(4);
-        final String input_dir = "data/raw/events.csv";
+        final String input_dir = "data/raw/events_large.csv";
         final String jobName = "purchases_v2";
         final String output_dir = "data/result/" + jobName;
         final String header = "user_id,amount,bucket";
